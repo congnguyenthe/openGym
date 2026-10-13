@@ -9,7 +9,7 @@ import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
-// Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
+// Admin-only operator dashboard (owner account only; guarded again server-side).
 // Deliberately English-only — it isn't part of the translated end-user surface, so it stays
 // out of the per-language string packs.
 
@@ -39,7 +39,6 @@ function UserDetail({ id, onChanged, close }) {
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {u.admin && <span className="tag acc">admin</span>}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>disabled</span>}
-      {u.invitedBy && <span className="tag">invite {u.invitedBy}</span>}
       <span className="tag">joined {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
@@ -63,44 +62,16 @@ function UserDetail({ id, onChanged, close }) {
   </>
 }
 
-function InvitesCard({ invites, reload }) {
-  const toast = useUI(s => s.toast)
-  const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
-    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
-    .catch(e => toast(e.message))
-  const revoke = code => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
-    .then(() => { toast('Code revoked'); reload() }).catch(e => toast(e.message))
-  const open = (invites || []).filter(i => !i.usedBy)
-  const used = (invites || []).filter(i => i.usedBy)
-  return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Invite codes</h2>
-      <Button variant="primary" size="sm" onClick={gen} icon="plus">Generate</Button></div>
-    <div className="small muted" style={{ margin: '6px 0 10px' }}>{open.length} unused · {used.length} redeemed</div>
-    {open.map(i => <div key={i.code} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)' }}>
-      <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em' }}
-        onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast('Copied ' + i.code) }}>{i.code}</span>
-      <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="revoke"><Icon name="trash" /></button>
-    </div>)}
-    {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '7px 2px', fontSize: '.8rem' }}>
-      <span style={{ fontFamily: 'monospace' }}>{i.code}</span><span>→ {i.usedByName || 'used'}</span>
-    </div>)}
-    {!open.length && !used.length && <div className="dim small">No codes yet — generate one to invite someone.</div>}
-  </div>
-}
-
 export default function Admin() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const [users, setUsers] = useState(null)
-  const [invites, setInvites] = useState(null)
-  const [inviteOnly, setInviteOnly] = useState(false)
 
-  const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || 'Failed to load'))
-  const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
+  const loadUsers = () => api('/api/admin/users').then(d => setUsers(d.users)).catch(e => toast(e.message || 'Failed to load'))
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => { if (!user?.admin) return; loadUsers(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
@@ -113,7 +84,7 @@ export default function Admin() {
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label="Back"><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Admin</h1>
         <div className="sub">{users ? users.length + ' users · ' + activeCount + ' active this week' : 'Loading…'}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites() }} aria-label="refresh">↻</button>
+      <button className="iconbtn" onClick={loadUsers} aria-label="refresh">↻</button>
     </div>
 
     <div className="tiles" style={{ marginBottom: 12 }}>
@@ -131,8 +102,6 @@ export default function Admin() {
         <span className="tag acc">{dur(Date.now() - u.live.startedAt)}</span>
       </div>)}
     </div>}
-
-    <InvitesCard invites={invites} reload={loadInvites} />
 
     <h4 className="sec">Users</h4>
     <div className="list">

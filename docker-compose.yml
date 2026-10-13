@@ -21,10 +21,11 @@ services:
         fi
     restart: "no"
 
-  # Passkey auth + per-user data (Node, no framework).
-  # image: prebuilt (docker compose pull). build: from source (docker compose up --build).
+  # Single-account auth (ADMIN_USERNAME / ADMIN_PASSWORD in .env) + data (Node, no framework).
+  # Built from source (docker compose up --build). The upstream ghcr.io images still use
+  # passkeys, so this fork doesn't pull them.
   api:
-    image: ghcr.io/duartesantos8/opengym-api:latest
+    image: opengym-api:local
     build: ./api
     restart: unless-stopped
     env_file: .env
@@ -32,12 +33,12 @@ services:
       - PORT=3000            # internal port (nginx proxies here) — do not change
       - DATA_DIR=/data
     volumes:
-      - ./data:/data         # users, passkeys, per-user state, session secret — BACK THIS UP
+      - ./data:/data         # account record, per-user state, session secret — BACK THIS UP
 
   # Builds the React frontend (multi-stage) and serves it, proxying /api → api
-  # and the exercise media from the shared volume. Single origin for passkeys.
+  # and the exercise media from the shared volume. Single origin so the session cookie applies.
   web:
-    image: ghcr.io/duartesantos8/opengym-web:latest
+    image: opengym-web:local
     build:
       context: .
       dockerfile: web/Dockerfile

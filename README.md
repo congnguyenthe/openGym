@@ -7,7 +7,7 @@
 **A self-hosted gym & body-weight tracker you actually own.**
 
 Plan your week, run guided workouts, track every set and your body weight over time —
-on your phone, synced across devices, behind your own passkey login.
+on your phone, synced across devices, behind your own login.
 No account on someone else's server, no subscription, no ads. Just `docker compose up`.
 
 <br>
@@ -75,8 +75,8 @@ as a home-screen app, passkey sign-in, offline support, sync across your phone a
 - 🟩 **Activity heatmap** — a GitHub-style year view, shaded by time spent training
 - 💪 **Muscle map** — a front-and-back body diagram shaded by how much work each muscle got, over a week, a month or all time. It names the muscles you *haven't* trained in that period, previews what a routine hits while you build it, and shows what you just trained when you finish. Male or female figure, your pick
 - 🔔 **Push notifications** — rest-timer alerts even with the app closed, plus an optional reminder on days you have a workout planned but haven't logged one. Opt in per profile; keys are generated on first run, nothing to configure
-- 🔑 **Passkeys, not passwords** — Face ID / Touch ID / fingerprint login; each profile keeps its own data, synced across devices
-- 🛠️ **Admin dashboard** (optional) — for whoever runs the instance: who's training right now, per-user history, disable accounts, and invite-only signup. Off by default, so a fresh instance stays open with no admin
+- 🔑 **One private account** — username and password set in `.env`, no sign-up; your data syncs across your devices
+- 🛠️ **Admin dashboard** — whether a workout is running right now, your workout history and body-weight log
 - 🎨 **Designed, not assembled** — light/dark themes and 8 accent colors saved to your profile, over a hand-drawn icon set instead of emoji, so it looks the same on every phone
 - 🌍 **12 languages** — full UI translation (EN, DE, ES, FR, IT, PT, PL, TR, RU, ZH, KO, HI); exercise instructions localized in 10 of them, loaded on demand so the app stays fast
 - 📥 **Bring your history with you** — import from **FitNotes** (Android and iOS), **Strong** and **Hevy**, or body weight straight out of an **Apple Health** export. Exercise names are matched against the library and anything unrecognised becomes one of your own exercises, so nothing in the file is dropped
@@ -95,13 +95,13 @@ docker compose pull   # grab prebuilt images (amd64 + arm64) — skip to build f
 docker compose up -d
 ```
 
-Open **http://localhost:8080**, tap **Create profile**, and you're in. First launch downloads
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env`, open **http://localhost:8080**, sign in, and you're in. First launch downloads
 the exercise media (~140 MB) once. Prefer building the images yourself instead of pulling from
 `ghcr.io`? Drop the `pull` step and run `docker compose up -d --build` — you don't need Node or
 a build step locally either way.
 
-> Want it reachable from your phone over the internet with passkeys? You'll need an HTTPS
-> domain — a two-line change in `.env`. See **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
+> Want it reachable from your phone over the internet? Put it behind HTTPS so the password
+> and session cookie aren't sent in the clear. See **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
 
 ## Mobile app (no server at all)
 
@@ -132,15 +132,15 @@ mobile app is the install-and-done flavor.
 ```
 
 - **frontend/** — React + Vite (React Router + Zustand), built to static files **inside Docker**
-- **api/** — Node with no framework, one dependency (`@simplewebauthn/server`), storing everything as plain JSON files under `./data`
-- **web/** — a multi-stage image that builds the frontend and serves it with nginx, proxying `/api` to the backend so it's all on **one origin** (passkeys require this)
+- **api/** — Node with no framework, one dependency (`web-push`), storing everything as plain JSON files under `./data`
+- **web/** — a multi-stage image that builds the frontend and serves it with nginx, proxying `/api` to the backend so it's all on **one origin** (the session cookie relies on this)
 
 ## Your data
 
-Lives in `./data` on your host: `db.json` (profiles + public passkeys), `state-<user>.json`
+Lives in `./data` on your host: `db.json` (the account record + push subscriptions), `state-<user>.json`
 (each user's plan, workouts, body weight, settings), and `secret` (the session-cookie key).
-**Back up `./data` and you've backed up everything.** Passkey private keys never touch the
-server — they stay in your phone's secure hardware / your password manager.
+**Back up `./data` and you've backed up everything.** The password itself is never stored —
+it lives only in `.env`.
 
 ## Configuration
 
@@ -148,12 +148,14 @@ All via `.env` (see `.env.example`):
 
 | Variable      | What it is                                           | Default                 |
 |---------------|------------------------------------------------------|-------------------------|
-| `RP_ID`       | Hostname passkeys are bound to                       | `localhost`             |
-| `ORIGIN`      | Full URL the app is served from                      | `http://localhost:8080` |
+| `ADMIN_USERNAME` | Username of the one account                       | `admin`                 |
+| `ADMIN_PASSWORD` | Its password — sign-in is disabled until set      | *(none)*                |
+| `ORIGIN`      | Full URL the app is served from (`https://` marks the cookie Secure) | `http://localhost:8080` |
 | `WEB_PORT`    | Host port for the web UI                             | `8080`                  |
-| `RP_NAME`     | Name shown in the passkey prompt                     | `openGym`               |
-| `ADMIN_UIDS`  | User ids that get the admin dashboard (comma-separated) | *(none)*             |
-| `INVITE_ONLY` | Require an invite code to create a profile           | *(off)*                 |
+
+This fork has no sign-up: there is exactly one account, defined by those two variables, and it
+gets the admin dashboard. Changing the password doesn't end existing sessions — use
+**Settings → Sign out everywhere** for that.
 
 Push notification keys are generated on first run and saved to `./data/vapid.json` — nothing to set.
 
@@ -187,8 +189,7 @@ React, the router and Zustand.
 ## Community
 
 - **[Q&A](https://github.com/DuarteSantos8/openGym/discussions/categories/q-a)** — self-hosting
-  help, passkey/login trouble, "how do I…". Most login problems turn out to be an `RP_ID`/`ORIGIN`
-  mismatch.
+  help, login trouble, "how do I…".
 - **[Ideas](https://github.com/DuarteSantos8/openGym/discussions/categories/ideas)** — features
   worth talking through before anyone writes code.
 - **[Show and tell](https://github.com/DuarteSantos8/openGym/discussions/categories/show-and-tell)**
