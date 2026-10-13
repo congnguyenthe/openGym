@@ -15,6 +15,9 @@ const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const OWNER_ID = 'owner';
+// Optional bearer key for scripts/agents importing data (docs/API.md). It acts as the owner but
+// only on GET/PUT /api/data — no admin, push or sign-out powers. Unset = key access disabled.
+const API_KEY = process.env.API_KEY || '';
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -187,6 +190,16 @@ function readSession(req) {
   if (!Number.isInteger(claimed) || claimed !== sessionVersion(user)) return null;
   return user;
 }
+// Session cookie, or for the data endpoints only, `Authorization: Bearer <API_KEY>`. The key
+// needs no db.json record: state is keyed by the owner id, which a later login adopts.
+function readSessionOrKey(req) {
+  const user = readSession(req);
+  if (user) return { user, viaKey: false };
+  const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+  if (!API_KEY || !m || !crypto.timingSafeEqual(digest(m[1].trim()), digest(API_KEY))) return null;
+  const owner = db.users.find(u => u.id === OWNER_ID) || { id: OWNER_ID, name: ADMIN_USERNAME };
+  return owner.disabled ? null : { user: owner, viaKey: true };
+}
 // Guard for /api/admin/* — resolves the caller and 401/403s if they aren't an admin.
 function requireAdmin(req, res) {
   const user = readSession(req);
@@ -286,7 +299,7 @@ const routes = {
   },
 
   'GET /api/data': async (req, res) => {
-    const user = readSession(req);
+    const { user } = readSessionOrKey(req) || {};
     if (!user) return json(res, 401, { error: 'not signed in' });
     try {
       const state = JSON.parse(fs.readFileSync(stateFile(user.id), 'utf8'));
@@ -295,11 +308,14 @@ const routes = {
   },
 
   'PUT /api/data': async (req, res) => {
-    const user = readSession(req);
+    const { user, viaKey } = readSessionOrKey(req) || {};
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
+    // An import is newer than anything a device holds, so stamp it now: devices adopt the server
+    // copy on next load only when its _ts is at least theirs.
+    if (viaKey) body.state._ts = Date.now();
     atomicWrite(stateFile(user.id), JSON.stringify(body.state));
     json(res, 200, { ok: true, ts: body.state._ts || null });
   },
@@ -429,4 +445,4 @@ http.createServer(async (req, res) => {
     console.error(key, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
-}).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN}, user=${ADMIN_USERNAME}${ADMIN_PASSWORD ? '' : ', NO ADMIN_PASSWORD — sign-in disabled'})`));
+}).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN}, user=${ADMIN_USERNAME}${ADMIN_PASSWORD ? '' : ', NO ADMIN_PASSWORD — sign-in disabled'}, api key ${API_KEY ? 'on' : 'off'})`));

@@ -152,6 +152,7 @@ All via `.env` (see `.env.example`):
 | `ADMIN_PASSWORD` | Its password — sign-in is disabled until set      | *(none)*                |
 | `ORIGIN`      | Full URL the app is served from (`https://` marks the cookie Secure) | `http://localhost:8080` |
 | `WEB_PORT`    | Host port for the web UI                             | `8080`                  |
+| `API_KEY`     | Bearer key for importing data via the API — see [docs/API.md](docs/API.md) | *(off)* |
 
 This fork has no sign-up: there is exactly one account, defined by those two variables, and it
 gets the admin dashboard. Changing the password doesn't end existing sessions — use

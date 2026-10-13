@@ -12,7 +12,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci 2>/dev/null || npm install
 COPY frontend/ ./
-RUN npm run build
+RUN npm run build && node scripts/export-exercises.mjs
 
 FROM nginx:alpine
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
